@@ -1,0 +1,22 @@
+# AWS Configuration
+aws_region  = "ap-northeast-1"
+aws_profile = "default"
+prefix      = "tf-logstash-s3-filebeat"
+
+# S3 Bucket Information
+s3_bucket_name   = "nobu-elk-logs-bucket"
+s3_bucket_prefix = "windows_events/"
+
+# EC2 Instance Configuration
+vpc_id       = "vpc-12345678" # Replace with your VPC ID
+subnet_id    = "subnet-12345678" # Replace with your Subnet ID
+ec2_ami      = "ami-026c39f4021df9abe"
+logstash_instance_type = "t3.small"
+filebeat_instance_type = "t3.small"
+
+# Elastic Cloud Configuration
+elastic_cloud_id = "your-cloud-id" # Replace with your Cloud ID
+elastic_api_key  = "your-api-key" # Replace with your API Key for Filebeat
+elastic_python_api_key = "your-monitoring-api-key" # Replace with API Key for Python monitoring tools
+# Tags
+default_tags = {}
