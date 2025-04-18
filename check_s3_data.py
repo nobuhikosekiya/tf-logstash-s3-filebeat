@@ -15,13 +15,13 @@ Usage:
 
 Arguments:
   --bucket    S3 bucket name
-  --prefix    Specific prefix path in the bucket (default: "linux_logs/")
+  --prefix    Specific prefix path in the bucket (default: "logs/")
   --wait      Time in seconds to wait for data to appear (polling every 10 seconds)
   --count     Number of latest files to check (default: 5)
   --verbose   Show detailed information about objects
 
 Examples:
-  # Basic check for data in the default linux_logs/ prefix
+  # Basic check for data in the default logs/ prefix
   python3 check_s3_data.py --bucket my-logstash-bucket
   
   # Check with a specific prefix and wait for new data for up to 5 minutes
@@ -43,7 +43,7 @@ from botocore.exceptions import ClientError
 def parse_args():
     parser = argparse.ArgumentParser(description='Check if data is being ingested into S3 bucket')
     parser.add_argument('--bucket', required=True, help='S3 bucket name')
-    parser.add_argument('--prefix', default='linux_logs/', help='S3 bucket prefix to check')
+    parser.add_argument('--prefix', default='logs/', help='S3 bucket prefix to check')
     parser.add_argument('--wait', type=int, default=0, help='Time to wait for data in seconds')
     parser.add_argument('--count', type=int, default=5, help='Number of latest files to check')
     parser.add_argument('--verbose', '-v', action='store_true', help='Show verbose output')

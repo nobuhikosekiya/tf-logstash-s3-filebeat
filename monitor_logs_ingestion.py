@@ -151,28 +151,74 @@ def download_logs(ssh_client, args):
     print("Log download completed successfully")
     return True
 
-def create_symlinks(ssh_client, log_dir, verbose=False):
-    """Create symlinks from split log files to Logstash monitor directory"""
-    print("Creating symlinks for Logstash to monitor split log files...")
+def create_symlinks(ssh_client, args, verbose=False):
+    """Create symlinks from both split and non-split log files to Logstash monitor directory, 
+    but only for the specified log type"""
+    log_dir = args.log_dir
+    log_type = args.log_type
+    
+    print(f"Creating symlinks for Logstash to monitor {log_type} log files...")
     
     # Command to create the monitor directory
     mkdir_cmd = f"sudo mkdir -p {log_dir}/logstash_input"
     execute_remote_command(ssh_client, mkdir_cmd, verbose)
     
-    # Command to find split files and create symlinks using the basename only
-    symlink_cmd = f"""
-    sudo find {log_dir} -path "*/split_logs/*" -type f -not -name "*.original" | while read -r file; do
-        sudo ln -sf "$file" "{log_dir}/logstash_input/$(basename "$file")"
+    # Clear existing symlinks first
+    clear_cmd = f"sudo rm -f {log_dir}/logstash_input/*"
+    execute_remote_command(ssh_client, clear_cmd, verbose)
+    
+    # Prepare the log types to process
+    log_types = []
+    if log_type == "all":
+        log_types = ["linux", "windows", "mac", "ssh", "apache"]
+    else:
+        # Split comma-separated log types if provided
+        log_types = log_type.split(",")
+    
+    # Create a script to handle the symlinking for specified log types
+    symlink_script = f"""
+    # Process each specified log type
+    for log_type in {' '.join(log_types)}; do
+        echo "Creating symlinks for $log_type logs..."
+        
+        # Skip if directory doesn't exist
+        if [ ! -d "{log_dir}/$log_type" ]; then
+            echo "Log directory for $log_type does not exist, skipping."
+            continue
+        fi
+        
+        # First, handle split log files if they exist
+        if [ -d "{log_dir}/$log_type/split_logs" ]; then
+            echo "Linking split log files for $log_type..."
+            sudo find "{log_dir}/$log_type/split_logs" -type f -not -name "*.original" | while read -r file; do
+                sudo ln -sf "$file" "{log_dir}/logstash_input/$(basename "$file")"
+            done
+        fi
+        
+        # Then, handle regular files that weren't split
+        echo "Linking regular log files for $log_type..."
+        sudo find "{log_dir}/$log_type" -type f \\
+            -not -path "*/split_logs/*" \\
+            -not -name "*.tar.gz" \\
+            -not -name "*.original" \\
+            -not -name "DOWNLOAD_COMPLETE" | while read -r file; do
+            sudo ln -sf "$file" "{log_dir}/logstash_input/$(basename "$file")"
+        done
     done
     """
     
-    exit_status, output, error = execute_remote_command(ssh_client, symlink_cmd, verbose)
+    # Create a temporary script file on the remote server
+    script_path = f"/tmp/create_symlinks_{int(time.time())}.sh"
+    script_cmd = f"""cat > {script_path} << 'EOL'
+{symlink_script}
+EOL
+chmod +x {script_path}
+sudo {script_path}
+rm {script_path}
+"""
     
-    if exit_status != 0:
-        print(f"Error creating symlinks: Exit status {exit_status}")
-        if error:
-            print(error)
-        return False
+    # Execute the script
+    execute_remote_command(ssh_client, script_cmd, verbose)
     
     # Count the symlinks created
     count_cmd = f"ls -la {log_dir}/logstash_input/ | wc -l"
@@ -184,6 +230,12 @@ def create_symlinks(ssh_client, log_dir, verbose=False):
         if link_count < 0:
             link_count = 0
         print(f"Created {link_count} symlinks in {log_dir}/logstash_input/")
+        
+        # List the first few files if verbose
+        if verbose and link_count > 0:
+            _, files_output, _ = execute_remote_command(ssh_client, f"ls -la {log_dir}/logstash_input/ | head -10", verbose=False)
+            print("Sample of linked files:")
+            print(files_output)
     except ValueError:
         print("Unable to determine the number of symlinks created")
     
@@ -418,7 +470,7 @@ def main():
                 sys.exit(1)
         
         # Create symlinks for Logstash
-        if not create_symlinks(ssh_client, args.log_dir, args.verbose):
+        if not create_symlinks(ssh_client, args, args.verbose):
             print("Failed to create symlinks. Exiting.")
             sys.exit(1)
         

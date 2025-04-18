@@ -4,25 +4,70 @@ This Terraform configuration creates infrastructure for processing and ingesting
 
 ## Architecture
 
+```
++----------------+        +---------------+        +---------------+
+|                |        |               |        |               |
+|  EC2 INSTANCE  |        |  AWS S3       |        |  EC2 INSTANCE |
+|                |        |  BUCKET       |        |               |
+|  * Logstash    | -----> |               | <----- |  * Filebeat   | -----> ELASTIC CLOUD
+|  * Sample Logs |        |  * Log Store  |        |               |        (NOT CREATED
+|                |        |               |        |               |         BY TERRAFORM)
++----------------+        +-------+-------+        +---------------+
+                                  |
+                                  | Notifications
+                                  v
+                          +---------------+
+                          |               |
+                          |  AWS SQS      |
+                          |  QUEUE        |
+                          |               |
+                          +---------------+
+```
+
 The setup includes:
 
-1. **Logstash EC2 Instance**:
+1. **Logstash EC2 Instance** (Created by Terraform):
    - Processes log data and outputs to S3
-   - Downloads sample Windows event logs
+   - Downloads sample logs (Linux, Windows, Mac, SSH, Apache)
    - Sends processed logs to an S3 bucket
+   - Uses IAM roles for S3 access
 
-2. **S3 Bucket**:
+2. **S3 Bucket** (Created by Terraform):
    - Stores processed logs from Logstash
    - Configured with notifications for object creation events
 
-3. **SQS Queue**:
+3. **SQS Queue** (Created by Terraform):
    - Receives S3 bucket notifications when new logs are added
    - Provides a reliable queue for processing events
 
-4. **Filebeat EC2 Instance**:
+4. **Filebeat EC2 Instance** (Created by Terraform):
    - Monitors the SQS queue for new log file notifications
    - Retrieves logs from S3 when notified
    - Sends logs to Elastic Cloud
+   - Uses IAM roles for S3 and SQS access
+
+5. **Elastic Cloud** (NOT created by Terraform):
+   - You must create this yourself before deploying this infrastructure
+   - Receives and indexes the logs from Filebeat
+   - Credentials are configured in the Terraform variables
+
+## What's Configured vs. What's Not
+
+### Configured by This Terraform Project
+- AWS S3 bucket for log storage
+- AWS SQS queue for notifications
+- EC2 instance with Logstash installed and configured
+- EC2 instance with Filebeat installed and configured
+- IAM roles and policies for secure access between components
+- Security groups for the EC2 instances
+- Sample log download scripts
+- Monitoring and validation scripts
+
+### Not Configured (You Must Set Up)
+- Elastic Cloud deployment (you need to have this ready with credentials)
+- SSH key pair (must exist at `~/.ssh/id_rsa.pub`)
+- VPC and subnet (you must specify IDs in variables)
+- AWS credentials and profile on your local machine
 
 ## Prerequisites
 
@@ -61,7 +106,7 @@ terraform apply
 ## Data Flow
 
 1. Logstash on EC2:
-   - Reads sample Windows event logs from local storage
+   - Reads logs from local storage
    - Processes the logs
    - Uploads the processed logs to S3
 
@@ -102,7 +147,7 @@ If you prefer to do it manually:
 
 1. **Download sample log files**:
    ```bash
-   ssh ec2-user@<logstash_instance_public_ip>
+   ssh ubuntu@<logstash_instance_public_ip>
    sudo /opt/download_logs.sh
    ```
 
@@ -122,6 +167,11 @@ On the Filebeat instance:
 ```bash
 sudo /root/check_filebeat.sh
 ```
+
+Several Python scripts are provided to validate the setup:
+- `check_elastic_data.py` - Verifies data is reaching Elasticsearch
+- `check_s3_data.py` - Verifies data is being uploaded to S3
+- `monitor_logs_ingestion.py` - Comprehensive monitoring of the entire pipeline
 
 ## Security and Compliance
 
